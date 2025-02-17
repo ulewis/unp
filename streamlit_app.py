@@ -126,4 +126,3 @@ elif modo == "Subir archivo (Excel/CSV)":
                             file_name="resultados_clasificacion.csv",
                             mime="text/csv"
                         )
-
