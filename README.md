@@ -36,7 +36,7 @@ pip install streamlit openai pandas numpy
 1. Ejecute la aplicación con Streamlit:
 
 ```bash
-streamlit run app.py
+streamlit run streamlit_app.py
 ```
 
 2. En su navegador, se abrirá la interfaz de la aplicación
