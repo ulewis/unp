@@ -1,11 +1,11 @@
 import streamlit as st
 import openai
-from openai import OpenAI  # Importamos la clase para instanciar el cliente
+import speech_recognition as sr
 import pandas as pd
-import numpy as np
 from io import StringIO
 
-# Define el prompt para clasificar comentarios
+# -----------------------------------------------------
+# PROMPT DE CLASIFICACIÓN (SIN CAMBIOS)
 prompt = """
 Tendrás un rol de clasificador de comentarios de una publicación relacionada con la vacuna contra el VPH.
 Sólo debes responder con un valor numérico.
@@ -22,26 +22,25 @@ Si no puedes clasificar, tu respuesta debe ser "3".
 Ahora, clasifica el siguiente comentario, teniendo en cuenta que tu respuesta es solo un número:
 """
 
-def zero_shot_classify(comment: str, client: OpenAI) -> str:
-    """
-    Clasifica un comentario utilizando GPT-4o (o GPT-4 si prefieres) y el prompt definido.
-    
-    Parámetros:
-        comment: Comentario a clasificar.
-        client: Instancia del cliente OpenAI.
-        
-    Retorna:
-        La clasificación asignada (un número como string).
-    """
+# -----------------------------------------------------
+# VARIABLE GLOBAL PARA EL CLIENTE
+client = None
+
+# -----------------------------------------------------
+# FUNCIÓN PARA CLASIFICAR USANDO LA API DE OPENAI 
+def zero_shot_classify(comment: str) -> str:
     messages = [
         {"role": "system", "content": prompt},
         {"role": "user", "content": comment}
     ]
     try:
-        # Usamos el método del cliente para crear la solicitud de chat completions
+        global client
+        # Si no se ha creado aún, se instancia el cliente con la API key proporcionada
+        if client is None:
+            client = openai.OpenAI(api_key=openai.api_key)
         response = client.chat.completions.create(
-            model="gpt-4o",  # Usa "gpt-3.5-turbo" o "gpt-4" según tu preferencia y disponibilidad
             messages=messages,
+            model="gpt-3.5-turbo",  # Puedes cambiar a "gpt-4" si lo prefieres/disponible
             temperature=0,
             max_tokens=10,
         )
@@ -50,16 +49,38 @@ def zero_shot_classify(comment: str, client: OpenAI) -> str:
         st.error(f"Error al clasificar el comentario: {e}")
         return "Error"
 
-# ----------------- Interfaz de Streamlit -----------------
-st.set_page_config(page_title="Tesis UNP - Ingeniería mecatrónica", layout="wide")
-st.header("Tesis UNP - Ingeniería mecatrónica")
+# -----------------------------------------------------
+# FUNCIÓN DE SPEECH-TO-TEXT 
+def record_audio() -> str:
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone()
+    with microphone as source:
+        st.info("Ajustando el ruido ambiente... Espera unos segundos.")
+        recognizer.adjust_for_ambient_noise(source)
+        st.info("Ajuste completado. ¡Puedes empezar a hablar!")
+        st.info("Escuchando...")
+        audio = recognizer.listen(source)
+    try:
+        # Reconoce el audio usando el servicio de Google
+        text = recognizer.recognize_google(audio, language="es-ES")
+        return text
+    except sr.UnknownValueError:
+        st.error("No se pudo entender el audio. Intenta de nuevo.")
+        return None
+    except sr.RequestError as e:
+        st.error("Error al conectarse al servicio de reconocimiento; {0}".format(e))
+        return None
+
+# -----------------------------------------------------
+# CONFIGURACIÓN E INTERFAZ DE STREAMLIT
+st.set_page_config(page_title="Tesis UNP - Ingeniería Mecatrónica", layout="wide")
+st.header("Tesis UNP - Ingeniería Mecatrónica")
 
 # Campo para la API key de OpenAI
 api_key = st.text_input("Ingresa tu API key de OpenAI", type="password")
-client = None
 if api_key:
-    # Instanciamos el cliente con la API key proporcionada
-    client = OpenAI(api_key=api_key)
+    openai.api_key = api_key
+    client = openai.OpenAI(api_key=api_key)
 
 # Explicación de las categorías
 st.markdown("""
@@ -72,8 +93,10 @@ st.markdown("""
 """)
 
 # Selección del modo de entrada
-modo = st.radio("Selecciona la forma de entrada", ("Comentario directo", "Subir archivo (Excel/CSV)"))
+modo = st.radio("Selecciona la forma de entrada", ("Comentario directo", "Reconocimiento de voz", "Subir archivo (Excel/CSV)"))
 
+# -----------------------------------------------------
+# MODO: COMENTARIO DIRECTO
 if modo == "Comentario directo":
     comment = st.text_area("Ingresa el comentario a clasificar:")
     if st.button("Clasificar comentario"):
@@ -83,10 +106,28 @@ if modo == "Comentario directo":
             st.error("Por favor ingresa un comentario.")
         else:
             with st.spinner("Clasificando..."):
-                result = zero_shot_classify(comment, client)
+                result = zero_shot_classify(comment)
             st.success(f"El comentario fue clasificado como: **{result}**")
-            st.info("Recuerda que:\n- 0: antivacuna\n- 1: provacuna\n- 2: duda\n- 3: otra cosa")
-            
+            st.info("Recuerda:\n- 0: antivacuna\n- 1: provacuna\n- 2: duda\n- 3: otra cosa")
+
+# -----------------------------------------------------
+# MODO: RECONOCIMIENTO DE VOZ
+elif modo == "Reconocimiento de voz":
+    if st.button("Grabar comentario"):
+        if not api_key:
+            st.error("Debes ingresar la API key de OpenAI.")
+        else:
+            recognized_text = record_audio()
+            if recognized_text:
+                st.write("Texto reconocido:")
+                st.code(recognized_text)
+                with st.spinner("Clasificando..."):
+                    result = zero_shot_classify(recognized_text)
+                st.success(f"El comentario fue clasificado como: **{result}**")
+                st.info("Recuerda:\n- 0: antivacuna\n- 1: provacuna\n- 2: duda\n- 3: otra cosa")
+
+# -----------------------------------------------------
+# MODO: SUBIR ARCHIVO (Excel/CSV)
 elif modo == "Subir archivo (Excel/CSV)":
     uploaded_file = st.file_uploader("Sube tu archivo de Excel o CSV", type=["xlsx", "xls", "csv"])
     if uploaded_file:
@@ -112,7 +153,7 @@ elif modo == "Subir archivo (Excel/CSV)":
                         st.error("Debes ingresar la API key de OpenAI.")
                     else:
                         with st.spinner("Clasificando comentarios..."):
-                            df['predicted_topic'] = df['Comment'].apply(lambda x: zero_shot_classify(x, client))
+                            df['predicted_topic'] = df['Comment'].apply(lambda x: zero_shot_classify(x))
                         st.success("¡Clasificación completada!")
                         st.write("Vista de resultados:")
                         st.dataframe(df.head())
