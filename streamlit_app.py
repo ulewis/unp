@@ -5,7 +5,7 @@ import pandas as pd
 from io import StringIO
 
 # -----------------------------------------------------
-# PROMPT DE CLASIFICACIÓN (SIN CAMBIOS)
+# PROMPT DE CLASIFICACIÓN 
 prompt = """
 Tendrás un rol de clasificador de comentarios de una publicación relacionada con la vacuna contra el VPH.
 Sólo debes responder con un valor numérico.

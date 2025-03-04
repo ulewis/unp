@@ -2,3 +2,4 @@ openpyxl
 streamlit
 openai
 SpeechRecognition
+pyaudio
