@@ -2,7 +2,8 @@ import streamlit as st
 import openai
 import speech_recognition as sr
 import pandas as pd
-from io import StringIO
+from io import BytesIO, StringIO
+from st_audiorec import st_audiorec  
 
 # -----------------------------------------------------
 # PROMPT DE CLASIFICACIÓN 
@@ -40,7 +41,7 @@ def zero_shot_classify(comment: str) -> str:
             client = openai.OpenAI(api_key=openai.api_key)
         response = client.chat.completions.create(
             messages=messages,
-            model="gpt-3.5-turbo",  # Puedes cambiar a "gpt-4" si lo prefieres/disponible
+            model="gpt-3.5-turbo",  # Puedes cambiar de modelo
             temperature=0,
             max_tokens=10,
         )
@@ -50,25 +51,19 @@ def zero_shot_classify(comment: str) -> str:
         return "Error"
 
 # -----------------------------------------------------
-# FUNCIÓN DE SPEECH-TO-TEXT 
-def record_audio() -> str:
+# FUNCIÓN PARA TRANSCRIBIR AUDIO CAPTURADO DESDE EL NAVEGADOR
+def transcribe_audio(audio_bytes: bytes) -> str:
     recognizer = sr.Recognizer()
-    microphone = sr.Microphone()
-    with microphone as source:
-        st.info("Ajustando el ruido ambiente... Espera unos segundos.")
-        recognizer.adjust_for_ambient_noise(source)
-        st.info("Ajuste completado. ¡Puedes empezar a hablar!")
-        st.info("Escuchando...")
-        audio = recognizer.listen(source)
+    with sr.AudioFile(BytesIO(audio_bytes)) as source:
+        audio = recognizer.record(source)
     try:
-        # Reconoce el audio usando el servicio de Google
         text = recognizer.recognize_google(audio, language="es-ES")
         return text
     except sr.UnknownValueError:
         st.error("No se pudo entender el audio. Intenta de nuevo.")
         return None
     except sr.RequestError as e:
-        st.error("Error al conectarse al servicio de reconocimiento; {0}".format(e))
+        st.error(f"Error al conectarse al servicio de reconocimiento: {e}")
         return None
 
 # -----------------------------------------------------
@@ -113,18 +108,18 @@ if modo == "Comentario directo":
 # -----------------------------------------------------
 # MODO: RECONOCIMIENTO DE VOZ
 elif modo == "Reconocimiento de voz":
-    if st.button("Grabar comentario"):
-        if not api_key:
-            st.error("Debes ingresar la API key de OpenAI.")
-        else:
-            recognized_text = record_audio()
-            if recognized_text:
-                st.write("Texto reconocido:")
-                st.code(recognized_text)
-                with st.spinner("Clasificando..."):
-                    result = zero_shot_classify(recognized_text)
-                st.success(f"El comentario fue clasificado como: **{result}**")
-                st.info("Recuerda:\n- 0: antivacuna\n- 1: provacuna\n- 2: duda\n- 3: otra cosa")
+    st.info("Utiliza el grabador para registrar tu comentario.")
+    # Se utiliza el componente 'st_audiorec' para grabar audio desde el navegador
+    audio_bytes = st_audiorec()
+    if audio_bytes:
+        recognized_text = transcribe_audio(audio_bytes)
+        if recognized_text:
+            st.write("Texto reconocido:")
+            st.code(recognized_text)
+            with st.spinner("Clasificando..."):
+                result = zero_shot_classify(recognized_text)
+            st.success(f"El comentario fue clasificado como: **{result}**")
+            st.info("Recuerda:\n- 0: antivacuna\n- 1: provacuna\n- 2: duda\n- 3: otra cosa")
 
 # -----------------------------------------------------
 # MODO: SUBIR ARCHIVO (Excel/CSV)
